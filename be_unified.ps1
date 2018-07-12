@@ -250,48 +250,32 @@ function errorObject($obj) {
 	return $object
 }
 
+function format_bemcli_job_error($job) {
+    $object = New-Object –TypeName PSObject
+
+    $object | Add-Member –MemberType NoteProperty –Name ServerName –Value $job.BackupExecServerName
+    $object | Add-Member –MemberType NoteProperty –Name JobName –Value $job.Name
+    $object | Add-Member –MemberType NoteProperty –Name JobType –Value $job.JobType
+    $object | Add-Member –MemberType NoteProperty –Name StartTime –Value $job.StartTime
+    $object | Add-Member –MemberType NoteProperty –Name LogName –Value $job.JobLogFilePath
+
+    $object | Add-Member –MemberType NoteProperty –Name EndTime –Value $job.EndTime
+    $object | Add-Member –MemberType NoteProperty –Name Engine_Completion_Status –Value $job.JobStatus
+
+    $object | Add-Member –MemberType NoteProperty –Name ErrorCode –Value $job.ErrorCode
+    $object | Add-Member –MemberType NoteProperty –Name ErrorDescription –Value $job.ErrorMessage
+    $object | Add-Member –MemberType NoteProperty –Name ErrorCategory –Value $job.ErrorCategory
+
+    $object | Add-Member –MemberType NoteProperty –Name TimeTaken_sec –Value $job.ElapsedTime.Seconds
+    $object | Add-Member –MemberType NoteProperty –Name TimeTaken_HMS –Value $job.ElapsedTime
+
+    return $object
+}
+
 $DebugPreference = "Continue"
+$ErrorActionPreference = "Stop"; #Make all errors terminating, or "Continue" to revert back
 
 # ================= start main program logic ==============
-if(Get-Module -List BEMCLI) {
-	Write-Debug "BEMCLI modules found"
-	Import-Module BEMCLI
-
-	$errors = @()
-
-	# TODO FIXME: change EndTime comparison to $last_script_run
-	try { # BE Server service may be down
-		$job_history = Get-BEJobHistory | Where-Object {($_.JobType -eq "Backup")} | Where-Object {$_.EndTime -gt (Get-date).AddDays(-1)} | sort EndTime -Descending
-	} catch {
-		Write-Output (format_errors_as_xml (error_for_code -6 "BE Serve service is down"))
-		exit -6
-	}
-
-	# TODO FIXME substitute with proper $last_run_time for '-After'
-	$warnings = Get-EventLog -LogName Application -Source 'Backup Exec' -EntryType Warning -After (Get-date).AddHours(-1)
-
-	foreach ($w in $warnings) {
-		Write-Debug $w
-		$fe = New-Object -TypeName PSObject
-		$fe | Add-Member -MemberType NoteProperty -Name StartTime -Value $w.TimeGenerated
-		$fe | Add-Member -MemberType NoteProperty -Name ServerName -Value $w.MachineName
-		$fe | Add-Member -MemberType NoteProperty -Name EventID -Value $w.EventID
-		$fe | Add-Member -MemberType NoteProperty -Name Message -Value $w.Message
-
-		$errors += $fe
-	}
-
-	foreach ($j in $job_history) {
-		$OkStatus =  @('Succeeded', 'Completed', 'Active', 'Ready', 'Scheduled', 'SucceededWithExceptions')
-
-		if ($OkStatus -contains $j.JobStatus) { continue }
-
-		$errors += format_bemcli_job_error $j
-	}
-
-	Write-Output $errors
-	exit 0
-} 
 
 # BEMCMD arguments
 $allJobsInfo = "-o506 -d1"
@@ -310,13 +294,6 @@ $legacyCMD = "bemcmd.exe"
 $cmdPATH = Join-Path $beDir $legacyCMD
 $errors = New-Object System.Collections.ArrayList
 
-if (!(Test-Path $cmdPATH)){
-	$desc = "BE cli binary not found: $cmdPATH"
-
-	Write-Output (formatErrorsAsXml (errorForCode -2 $desc))
-	exit -2
-}
-
 # validate existing of $lastRunFile
 # if not - create
 if((Test-Path ..\temp\) -eq $False){
@@ -330,8 +307,54 @@ if((Test-Path $lastRunFile) -eq $False){
 # get last run date to determine the period of data to grab from logs and schedule
 $lastRunDate = getLastRunDate
 
+# this is a 14+ version block
+if(Get-Module -List BEMCLI) {
+	Write-Debug "BEMCLI modules found"
+	Import-Module BEMCLI
+
+	$errors = @()
+
+	try { # BE Server service may be down
+		$job_history = Get-BEJobHistory | Where-Object {($_.JobType -eq "Backup")} | Where-Object {$_.EndTime -gt $lastRunDate} | sort EndTime -Descending
+	} catch {
+		Write-Output (formatErrorsAsXml (errorForCode -6 "BE Serve service is down"))
+		exit -6
+	}
+
+	$warnings = Get-EventLog -LogName Application -Source 'Backup Exec' -EntryType Warning -After $lastRunDate
+
+	if ($warnings) {
+        foreach ($w in $warnings) {
+			$fe = New-Object -TypeName PSObject
+			$fe | Add-Member -MemberType NoteProperty -Name StartTime -Value $w.TimeGenerated
+			$fe | Add-Member -MemberType NoteProperty -Name ServerName -Value $w.MachineName
+			$fe | Add-Member -MemberType NoteProperty -Name EventID -Value $w.EventID
+			$fe | Add-Member -MemberType NoteProperty -Name Message -Value $w.Message
+
+			$errors += $fe
+	   }
+    }
+
+	foreach ($j in $job_history) {
+		$OkStatus =  @('Succeeded', 'Completed', 'Active', 'Ready', 'Scheduled', 'SucceededWithExceptions')
+
+		if ($OkStatus -contains $j.JobStatus) { continue }
+
+		$errors += format_bemcli_job_error $j
+	}
+
+	Write-Output (formatErrorsAsXml $errors)
+	exit 0
+} # end of 14+ version block
+
+if (!(Test-Path $cmdPATH)){
+	$desc = "BE cli binary not found: $cmdPATH"
+
+	Write-Output (formatErrorsAsXml (errorForCode -2 $desc))
+	exit -2
+}
+
 getJobs(executeBEMCMD($allJOBsInfo))
 
 Write-Output (formatErrorsAsXml $errors)
 exit 0
-
