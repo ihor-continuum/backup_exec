@@ -210,21 +210,21 @@ function getLastRunDate(){
 function errorObject($obj) {
     $object = New-Object -TypeName PSObject
 	if ($obj.gettype() -eq [System.Xml.XmlDocument]){
-		$startDate = (parseJobTime($log.joblog.header.start_time))
-		$endDate = (parseJobTime($log.joblog.footer.end_time))
+		$startDate = (parseJobTime($obj.joblog.header.start_time))
+		$endDate = (parseJobTime($obj.joblog.footer.end_time))
 
-		$object | Add-Member -MemberType NoteProperty -Name ServerName -Value $log.joblog.header.server.Trim()
-		$object | Add-Member -MemberType NoteProperty -Name JobName -Value $log.joblog.header.name.Trim()
-		$object | Add-Member -MemberType NoteProperty -Name JobType -Value $log.joblog.header.type.Trim()
+		$object | Add-Member -MemberType NoteProperty -Name ServerName -Value $obj.joblog.header.server.Trim()
+		$object | Add-Member -MemberType NoteProperty -Name JobName -Value $obj.joblog.header.name.Trim()
+		$object | Add-Member -MemberType NoteProperty -Name JobType -Value $obj.joblog.header.type.Trim()
 		$object | Add-Member -MemberType NoteProperty -Name StartTime -Value $startDate
-		$object | Add-Member -MemberType NoteProperty -Name LogName -Value $log.joblog.header.log_name.Trim()
+		$object | Add-Member -MemberType NoteProperty -Name LogName -Value $obj.joblog.header.log_name.Trim()
 
 		$object | Add-Member -MemberType NoteProperty -Name EndTime -Value $endDate
-		$object | Add-Member -MemberType NoteProperty -Name EngineCompletionStatus -Value $log.joblog.footer.engine_completion_status.Trim()
+		$object | Add-Member -MemberType NoteProperty -Name EngineCompletionStatus -Value $obj.joblog.footer.engine_completion_status.Trim()
 
-		$object | Add-Member -MemberType NoteProperty -Name ErrorCode -Value $log.joblog.footer.CompleteStatus
-		$object | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value $log.joblog.footer.AbortUserName
-		$object | Add-Member -MemberType NoteProperty -Name ErrorCategory -Value $log.joblog.footer.ErrorCategory
+		$object | Add-Member -MemberType NoteProperty -Name ErrorCode -Value $obj.joblog.footer.CompleteStatus
+		$object | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value $obj.joblog.footer.AbortUserName
+		$object | Add-Member -MemberType NoteProperty -Name ErrorCategory -Value $obj.joblog.footer.ErrorCategory
 
 		$took = ($endDate - $startDate)
 
