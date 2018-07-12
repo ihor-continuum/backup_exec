@@ -231,45 +231,23 @@ function errorObject($obj) {
 		$object | Add-Member -MemberType NoteProperty -Name TimeTaken_sec -Value $took.Seconds
 		$object | Add-Member -MemberType NoteProperty -Name TimeTaken_HMS -Value ("{0:hh:mm:ss}" -f $took.toString())
 	} else {
-		$object | Add-Member -MemberType NoteProperty -Name ServerName -Value $job.BackupExecServerName
-		$object | Add-Member -MemberType NoteProperty -Name JobName -Value $job.Name
-		$object | Add-Member -MemberType NoteProperty -Name JobType -Value $job.JobType
-		$object | Add-Member -MemberType NoteProperty -Name StartTime -Value $job.StartTime
-		$object | Add-Member -MemberType NoteProperty -Name LogName -Value $job.JobLogFilePath
+		$object | Add-Member -MemberType NoteProperty -Name ServerName -Value $obj.BackupExecServerName
+		$object | Add-Member -MemberType NoteProperty -Name JobName -Value $obj.Name
+		$object | Add-Member -MemberType NoteProperty -Name JobType -Value $obj.JobType
+		$object | Add-Member -MemberType NoteProperty -Name StartTime -Value $obj.StartTime
+		$object | Add-Member -MemberType NoteProperty -Name LogName -Value $obj.JobLogFilePath
 
-		$object | Add-Member -MemberType NoteProperty -Name EndTime -Value $job.EndTime
-		$object | Add-Member -MemberType NoteProperty -Name EngineCompletionStatus -Value $job.JobStatus
+		$object | Add-Member -MemberType NoteProperty -Name EndTime -Value $obj.EndTime
+		$object | Add-Member -MemberType NoteProperty -Name EngineCompletionStatus -Value $obj.JobStatus
 
-		$object | Add-Member -MemberType NoteProperty -Name ErrorCode -Value $job.ErrorCode
-		$object | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value $job.ErrorMessage
-		$object | Add-Member -MemberType NoteProperty -Name ErrorCategory -Value $job.ErrorCategory
+		$object | Add-Member -MemberType NoteProperty -Name ErrorCode -Value $obj.ErrorCode
+		$object | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value $obj.ErrorMessage
+		$object | Add-Member -MemberType NoteProperty -Name ErrorCategory -Value $obj.ErrorCategory
 
-		$object | Add-Member -MemberType NoteProperty -Name TimeTaken_sec -Value $job.ElapsedTime.Seconds
-		$object | Add-Member -MemberType NoteProperty -Name TimeTaken_HMS -Value $job.ElapsedTime
+		$object | Add-Member -MemberType NoteProperty -Name TimeTaken_sec -Value $obj.ElapsedTime.Seconds
+		$object | Add-Member -MemberType NoteProperty -Name TimeTaken_HMS -Value $obj.ElapsedTime
 	}
 	return $object
-}
-
-function format_bemcli_job_error($job) {
-    $object = New-Object –TypeName PSObject
-
-    $object | Add-Member –MemberType NoteProperty –Name ServerName –Value $job.BackupExecServerName
-    $object | Add-Member –MemberType NoteProperty –Name JobName –Value $job.Name
-    $object | Add-Member –MemberType NoteProperty –Name JobType –Value $job.JobType
-    $object | Add-Member –MemberType NoteProperty –Name StartTime –Value $job.StartTime
-    $object | Add-Member –MemberType NoteProperty –Name LogName –Value $job.JobLogFilePath
-
-    $object | Add-Member –MemberType NoteProperty –Name EndTime –Value $job.EndTime
-    $object | Add-Member –MemberType NoteProperty –Name Engine_Completion_Status –Value $job.JobStatus
-
-    $object | Add-Member –MemberType NoteProperty –Name ErrorCode –Value $job.ErrorCode
-    $object | Add-Member –MemberType NoteProperty –Name ErrorDescription –Value $job.ErrorMessage
-    $object | Add-Member –MemberType NoteProperty –Name ErrorCategory –Value $job.ErrorCategory
-
-    $object | Add-Member –MemberType NoteProperty –Name TimeTaken_sec –Value $job.ElapsedTime.Seconds
-    $object | Add-Member –MemberType NoteProperty –Name TimeTaken_HMS –Value $job.ElapsedTime
-
-    return $object
 }
 
 $DebugPreference = "Continue"
@@ -340,10 +318,11 @@ if(Get-Module -List BEMCLI) {
 
 		if ($OkStatus -contains $j.JobStatus) { continue }
 
-		$errors += format_bemcli_job_error $j
+		$errors += errorObject $j
 	}
 
 	Write-Output (formatErrorsAsXml $errors)
+
 	exit 0
 } # end of 14+ version block
 
