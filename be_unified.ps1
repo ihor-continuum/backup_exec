@@ -208,7 +208,12 @@ function getLastRunDate(){
 
 # prepare single XML object for error
 function errorObject($obj) {
-    $object = New-Object -TypeName PSObject
+	$object = New-Object -TypeName PSObject
+
+	$object | Add-Member -MemberType NoteProperty -Name ResourceType -Value "Backup"
+	$object | Add-Member -MemberType NoteProperty -Name ResSubType -Value "Veritas"
+	$object | Add-Member -MemberType NoteProperty -Name MndTime -Value $dateNow
+
 	if ($obj.gettype() -eq [System.Xml.XmlDocument]){
 		$startDate = (parseJobTime($obj.joblog.header.start_time))
 		$endDate = (parseJobTime($obj.joblog.footer.end_time))
@@ -304,6 +309,11 @@ if(Get-Module -List BEMCLI) {
 	if ($warnings) {
         foreach ($w in $warnings) {
 			$fe = New-Object -TypeName PSObject
+
+			$fe | Add-Member -MemberType NoteProperty -Name ResourceType -Value "Backup"
+			$fe | Add-Member -MemberType NoteProperty -Name ResSubType -Value "Veritas"
+			$fe | Add-Member -MemberType NoteProperty -Name MndTime -Value $dateNow
+
 			$fe | Add-Member -MemberType NoteProperty -Name StartTime -Value $w.TimeGenerated
 			$fe | Add-Member -MemberType NoteProperty -Name ServerName -Value $w.MachineName
 			$fe | Add-Member -MemberType NoteProperty -Name EventID -Value $w.EventID
@@ -313,14 +323,15 @@ if(Get-Module -List BEMCLI) {
 	   }
     }
 
-	foreach ($j in $job_history) {
-		$OkStatus =  @('Succeeded', 'Completed', 'Active', 'Ready', 'Scheduled', 'SucceededWithExceptions')
+    if ($job_history) {
+		foreach ($j in $job_history) {
+			$OkStatus =  @('Succeeded', 'Completed', 'Active', 'Ready', 'Scheduled', 'SucceededWithExceptions')
 
-		if ($OkStatus -contains $j.JobStatus) { continue }
+			if ($OkStatus -contains $j.JobStatus) { continue }
 
-		$errors += errorObject $j
-	}
-
+			$errors += errorObject $j
+		}
+    }
 	Write-Output (formatErrorsAsXml $errors)
 
 	exit 0
