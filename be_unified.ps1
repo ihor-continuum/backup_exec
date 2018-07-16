@@ -66,30 +66,17 @@ function getEventLogError($jobName, $jobStartTime){
 # failed jobs
 function getHistoryJobStatus($job, $mainJobID){
 
-	$jobInfo = executeBEMCMD("$($specificJobHistory)$($job.ID) -h")
+	$jobInfo = executeBEMCMD("$($specificJobHistory)$($job.ID)")
 	if ($jobInfo | Out-String | Select-String -Pattern "RETURN VALUE: -1"){	
-		
-		# check for generated event logs
-		# if presents add to errors
-		$e = getEventLogError $job.Name $job.ActualStartTime
-			
-		if ($e){		
-			$formattedError = New-Object -TypeName PSObject
-			$formattedError | Add-Member -MemberType NoteProperty -Name "JobName" -Value $job.Name
-			$formattedError | Add-Member -MemberType NoteProperty -Name "StartTime" -Value $e.TimeGenerated
-			$formattedError | Add-Member -MemberType NoteProperty -Name "ServerName" -Value $e.MachineName
-			$formattedError | Add-Member -MemberType NoteProperty -Name "ErrorCode" -Value $e.EventID
-			$formattedError | Add-Member -MemberType NoteProperty -Name "ErrorDescription" -Value $e.Message
-
-			$errors.Add($formattedError) | Out-Null
-			return
-		}
 		
 		# check for actual status of job
 		# if it is equal to Running escape it
 		if (!(getActualJobStatus $mainJobID)){
 			
 			$formattedError = New-Object -TypeName PSObject
+			$formattedError | Add-Member -MemberType NoteProperty -Name ResourceType -Value "Backup"
+			$formattedError | Add-Member -MemberType NoteProperty -Name ResSubType -Value "Veritas"
+			$formattedError | Add-Member -MemberType NoteProperty -Name MndTime -Value $dateNow
 			$formattedError | Add-Member -MemberType NoteProperty -Name "JobName" -Value $job.Name
 			$formattedError | Add-Member -MemberType NoteProperty -Name "StartTime" -Value $job.ActualStartTime
 			$formattedError | Add-Member -MemberType NoteProperty -Name "ErrorCode" -Value 24
@@ -99,7 +86,26 @@ function getHistoryJobStatus($job, $mainJobID){
 			return
 		}
 	}
-		
+
+	# check for generated event logs
+	# if presents add to errors
+	$e = getEventLogError $job.Name $job.ActualStartTime
+	
+	if ($e){		
+		$formattedError = New-Object -TypeName PSObject
+		$formattedError | Add-Member -MemberType NoteProperty -Name ResourceType -Value "Backup"
+		$formattedError | Add-Member -MemberType NoteProperty -Name ResSubType -Value "Veritas"
+		$formattedError | Add-Member -MemberType NoteProperty -Name MndTime -Value $dateNow
+		$formattedError | Add-Member -MemberType NoteProperty -Name "JobName" -Value $job.Name
+		$formattedError | Add-Member -MemberType NoteProperty -Name "StartTime" -Value $e.TimeGenerated
+		$formattedError | Add-Member -MemberType NoteProperty -Name "ServerName" -Value $e.MachineName
+		$formattedError | Add-Member -MemberType NoteProperty -Name "ErrorCode" -Value $e.EventID
+		$formattedError | Add-Member -MemberType NoteProperty -Name "ErrorDescription" -Value $e.Message
+
+		$errors.Add($formattedError) | Out-Null
+		return
+	}
+
 	# check for generated log file
 	# if it is not successes - add to error
 	$logFilePath = ""
