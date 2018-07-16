@@ -78,8 +78,8 @@ function getHistoryJobStatus($job, $mainJobID){
 			$formattedError | Add-Member -MemberType NoteProperty -Name "JobName" -Value $job.Name
 			$formattedError | Add-Member -MemberType NoteProperty -Name "StartTime" -Value $e.TimeGenerated
 			$formattedError | Add-Member -MemberType NoteProperty -Name "ServerName" -Value $e.MachineName
-			$formattedError | Add-Member -MemberType NoteProperty -Name "EventID" -Value $e.EventID
-			$formattedError | Add-Member -MemberType NoteProperty -Name "Message" -Value $e.Message
+			$formattedError | Add-Member -MemberType NoteProperty -Name "ErrorCode" -Value $e.EventID
+			$formattedError | Add-Member -MemberType NoteProperty -Name "ErrorDescription" -Value $e.Message
 
 			$errors.Add($formattedError) | Out-Null
 			return
@@ -316,8 +316,8 @@ if(Get-Module -List BEMCLI) {
 
 			$fe | Add-Member -MemberType NoteProperty -Name StartTime -Value $w.TimeGenerated
 			$fe | Add-Member -MemberType NoteProperty -Name ServerName -Value $w.MachineName
-			$fe | Add-Member -MemberType NoteProperty -Name EventID -Value $w.EventID
-			$fe | Add-Member -MemberType NoteProperty -Name Message -Value $w.Message
+			$fe | Add-Member -MemberType NoteProperty -Name ErrorCode -Value $w.EventID
+			$fe | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value $w.Message
 
 			$errors += $fe
 	   }
