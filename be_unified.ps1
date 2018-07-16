@@ -304,7 +304,7 @@ if(Get-Module -List BEMCLI) {
 		exit -6
 	}
 
-	$warnings = Get-EventLog -LogName Application -Source 'Backup Exec' -EntryType Warning -After $lastRunDate
+	$warnings = Get-EventLog -LogName Application -Source 'Backup Exec' -EntryType Error,Warning -After $lastRunDate
 
 	if ($warnings) {
         foreach ($w in $warnings) {
