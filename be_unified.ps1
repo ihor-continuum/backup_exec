@@ -1,12 +1,3 @@
-# used for getting actual job status
-function getActualJobStatus($mainJobID){
-    $status = ""
-    executeBEMCMD("$($actualJobStatus)$($mainJobID)") | Out-String | Select-String -Pattern "JOB STATUS:+\s+\w+\s+\((\w+)\)" | forEach {$_.matches | forEach { $status = $_.Groups[1].Value}}
-	if ($status -eq "Running"){
-		return $status
-	}
-}
-
 # used for formatting errors to xml
 function formatErrorsAsXml($errors) {
 	return ($errors | ConvertTo-Xml -NoTypeInformation -As Stream)
@@ -49,8 +40,12 @@ function parseJobTime($jobTime) {
 # search through Event Log to find an error
 # since expected run time
 function getEventLogError($jobName, $jobStartTime){
+	$jobStartTime = Get-Date -Date $jobStartTime
+	$after = $jobStartTime - (New-TimeSpan -Minutes 3)
+	$date = Get-Date -Date $jobStartTime
+	$before = $date + (New-TimeSpan -Minutes 3)
 	Try {
-		$eventLogErrors = Get-EventLog -LogName Application -Source "Backup Exec" -EntryType Error,Warning -After $jobStartTime
+		$eventLogErrors = Get-EventLog -LogName Application -Source "Backup Exec" -EntryType Error,Warning -After $($after) -Before $($before)
 	} Catch {
 		return
 	}
@@ -64,34 +59,31 @@ function getEventLogError($jobName, $jobStartTime){
 # used for retrieving all information by specific
 # history job ID and collecting information about
 # failed jobs
-function getHistoryJobStatus($job, $mainJobID){
+function getHistoryJobStatus($job){
 
 	$jobInfo = executeBEMCMD("$($specificJobHistory)$($job.ID)")
-	if ($jobInfo | Out-String | Select-String -Pattern "RETURN VALUE: -1"){	
-		
-		# check for actual status of job
-		# if it is equal to Running escape it
-		if (!(getActualJobStatus $mainJobID)){
-			
-			$formattedError = New-Object -TypeName PSObject
-			$formattedError | Add-Member -MemberType NoteProperty -Name ResourceType -Value "Backup"
-			$formattedError | Add-Member -MemberType NoteProperty -Name ResSubType -Value "Veritas"
-			$formattedError | Add-Member -MemberType NoteProperty -Name MndTime -Value $dateNow
-			$formattedError | Add-Member -MemberType NoteProperty -Name "JobName" -Value $job.Name
-			$formattedError | Add-Member -MemberType NoteProperty -Name "StartTime" -Value $job.ActualStartTime
-			$formattedError | Add-Member -MemberType NoteProperty -Name "ErrorCode" -Value 24
-			$formattedError | Add-Member -MemberType NoteProperty -Name "ErrorDescription" -Value "Job was not started according to schedule"
-			
-			$errors.Add($formattedError) | Out-Null
+	
+	# check for generated log file
+	# if it is not successes - add to error
+	$logFilePath = ""
+	$jobInfo | Out-String | Select-String -Pattern "LOGFILE:\s+(.+.xml)" | forEach {$_.matches | forEach { $logFilePath = $_.Groups[1].Value}}
+	$log = getBexLogStatus $job.Name $logFilePath
+
+	if ($log){
+		$jobName = $($job.Name.Split([Environment]::NewLine)[0])
+		if (($log.joblog.header.name.Trim() -eq "Job name: $($jobName)") -and ($log.joblog.footer.engine_completion_status.Trim() -eq "Job completion status: Successful")) {
 			return
 		}
+		$bexError = errorObject $log
+		$errors.Add($bexError) | Out-Null
+		return
 	}
-
+	
 	# check for generated event logs
 	# if presents add to errors
 	$e = getEventLogError $job.Name $job.ActualStartTime
 	
-	if ($e){		
+	if ($e){
 		$formattedError = New-Object -TypeName PSObject
 		$formattedError | Add-Member -MemberType NoteProperty -Name ResourceType -Value "Backup"
 		$formattedError | Add-Member -MemberType NoteProperty -Name ResSubType -Value "Veritas"
@@ -105,20 +97,6 @@ function getHistoryJobStatus($job, $mainJobID){
 		$errors.Add($formattedError) | Out-Null
 		return
 	}
-
-	# check for generated log file
-	# if it is not successes - add to error
-	$logFilePath = ""
-	$jobInfo | Out-String | Select-String -Pattern "LOGFILE:\s+(.+.xml)" | forEach {$_.matches | forEach { $logFilePath = $_.Groups[1].Value}}
-	$log = getBexLogStatus $job.Name $logFilePath
-
-	if ($log){
-		$bexError = errorObject $log
-		$errors.Add($bexError) | Out-Null
-		return
-	}
-	
-	return
 }
 
 # used for validating history jobs by start time
@@ -165,7 +143,7 @@ function getJobs($bemcmdInfo){
 				if (!(isInTimeRange("$($job.ActualStartTime)"))){
 					continue
 				}
-				getHistoryJobStatus $job $jobID
+				getHistoryJobStatus $job
 			}
 		}
 	continue
@@ -196,14 +174,15 @@ function getLastRunDate(){
 	Try {
 	  $lastRunDate = [DateTime]::Parse((cat $lastRunFile))
 	} Catch {
-	  $lastRunDate = $dateNow - (New-TimeSpan -Hours 2)
+	  date > $lastRunFile
+	  return $dateNow - (New-TimeSpan -Hours 2)
 	}
 	$elapsed = $dateNow - $lastRunDate
 	if ($elapsed.TotalHours -gt 24 ){
 		return $dateNow - (New-TimeSpan -Hours 24)
 	}
 	if ($elapsed.TotalHours -gt 2 ){
-		return $dateNow - (New-TimeSpan -Hours 24)
+		return $dateNow - $lastRunDate
 	}
 	# get at least 2h of previous data in case of recent script\machine crash
 	if ($elapsed.TotalHours -lt 2 ){
@@ -224,14 +203,14 @@ function errorObject($obj) {
 		$startDate = (parseJobTime($obj.joblog.header.start_time))
 		$endDate = (parseJobTime($obj.joblog.footer.end_time))
 
-		$object | Add-Member -MemberType NoteProperty -Name ServerName -Value $obj.joblog.header.server.Trim()
-		$object | Add-Member -MemberType NoteProperty -Name JobName -Value $obj.joblog.header.name.Trim()
-		$object | Add-Member -MemberType NoteProperty -Name JobType -Value $obj.joblog.header.type.Trim()
+		$object | Add-Member -MemberType NoteProperty -Name ServerName -Value $obj.joblog.header.server.Split(":")[1].Trim()
+		$object | Add-Member -MemberType NoteProperty -Name JobName -Value $obj.joblog.header.name.Split(":")[1].Trim()
+		$object | Add-Member -MemberType NoteProperty -Name JobType -Value $obj.joblog.header.type.Split(":")[1].Trim()
 		$object | Add-Member -MemberType NoteProperty -Name StartTime -Value $startDate
-		$object | Add-Member -MemberType NoteProperty -Name LogName -Value $obj.joblog.header.log_name.Trim()
+		$object | Add-Member -MemberType NoteProperty -Name LogName -Value $obj.joblog.header.log_name.Split(":")[1].Trim()
 
 		$object | Add-Member -MemberType NoteProperty -Name EndTime -Value $endDate
-		$object | Add-Member -MemberType NoteProperty -Name EngineCompletionStatus -Value $obj.joblog.footer.engine_completion_status.Trim()
+		$object | Add-Member -MemberType NoteProperty -Name EngineCompletionStatus -Value $obj.joblog.footer.engine_completion_status.Split(":")[1].Trim()
 
 		$object | Add-Member -MemberType NoteProperty -Name ErrorCode -Value $obj.joblog.footer.CompleteStatus
 		$object | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value $obj.joblog.footer.AbortUserName
@@ -295,6 +274,9 @@ if((Test-Path $lastRunFile) -eq $False){
 
 # get last run date to determine the period of data to grab from logs and schedule
 $lastRunDate = getLastRunDate
+if ($args[0]){
+	$lastRunDate = $args[0]
+}
 
 # this is a 14+ version block
 if(Get-Module -List BEMCLI) {
