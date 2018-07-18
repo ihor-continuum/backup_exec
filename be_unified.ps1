@@ -182,7 +182,8 @@ function getLastRunDate(){
 		return $dateNow - (New-TimeSpan -Hours 24)
 	}
 	if ($elapsed.TotalHours -gt 2 ){
-		return $dateNow - $lastRunDate
+		$lastRunDateInHours = Get-Date -Date $($lastRunDate) -UFormat %H
+		return $dateNow - (New-TimeSpan -Hours $lastRunDateInHours)
 	}
 	# get at least 2h of previous data in case of recent script\machine crash
 	if ($elapsed.TotalHours -lt 2 ){
@@ -292,8 +293,8 @@ if(Get-Module -List BEMCLI) {
 		exit -6
 	}
 
-	$warnings = Get-EventLog -LogName Application -Source 'Backup Exec' -EntryType Error,Warning -After $lastRunDate
-
+	$warnings = Get-EventLog -LogName Application -Source 'Backup Exec' -EntryType Error,Warning -After $lastRunDate -ErrorAction SilentlyContinue
+	
 	if ($warnings) {
         foreach ($w in $warnings) {
 			$fe = New-Object -TypeName PSObject
