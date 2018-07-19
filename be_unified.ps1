@@ -44,14 +44,13 @@ function parseJobTime($jobTime) {
 # since expected run time
 function getEventLogError($jobName, $jobStartTime){
 	$jobStartTime = Get-Date -Date $jobStartTime
-	$after = $jobStartTime - (New-TimeSpan -Minutes 3)
-	$date = Get-Date -Date $jobStartTime
-	$before = $date + (New-TimeSpan -Minutes 3)
+	$after = $jobStartTime - (New-TimeSpan -Minutes 1)
 	Try {
-		$eventLogErrors = Get-EventLog -LogName Application -Source "Backup Exec" -EntryType Error,Warning -After $($after) -Before $($before)
+		$eventLogErrors = Get-EventLog -LogName Application -Source "Backup Exec" -EntryType Error,Warning -After $($after) -Before $($dateNow)
 	} Catch {
 		return
 	}
+	
 	foreach ($e in $eventLogErrors) {
 		if ($e.Message | Select-String -Pattern $jobName.Split([Environment]::NewLine)[0]){
 			return $e
@@ -90,7 +89,7 @@ function getHistoryJobStatus($job){
 	
 	# check for generated event logs
 	# if presents add to errors
-	$e = getEventLogError $job.Name $job.ActualStartTime
+	$e = getEventLogError $job.Name $(Get-Date -Date $job.ActualStartTime)
 	
 	if ($e){
 	
