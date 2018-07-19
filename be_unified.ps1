@@ -26,6 +26,9 @@ function getBexLogStatus($jobName, $logFilePath){
 
 # converts plaintext BEX log format like "Job ended: Sunday, June 24, 2018 at 8:00:14 AM\n" into DateTime object
 function parseJobTime($jobTime) {
+	if (!($jobTime)){
+		return
+	}
 	$dateTmpl = "dddd, MMMM d, yyyy a\t h:mm:ss tt"
 	if ($jobTime.StartsWith("Job ended:")) {
 		$dateStr = $jobTime.TrimStart("Job ended: ").Trim()
@@ -68,15 +71,21 @@ function getHistoryJobStatus($job){
 	$logFilePath = ""
 	$jobInfo | Out-String | Select-String -Pattern "LOGFILE:\s+(.+.xml)" | forEach {$_.matches | forEach { $logFilePath = $_.Groups[1].Value}}
 	$log = getBexLogStatus $job.Name $logFilePath
-
+	
+	$formattedError = New-Object -TypeName PSObject
+	
 	if ($log){
 		$jobName = $($job.Name.Split([Environment]::NewLine)[0])
 		if (($log.joblog.header.name.Trim() -eq "Job name: $($jobName)") -and ($log.joblog.footer.engine_completion_status.Trim() -eq "Job completion status: Successful")) {
 			return
 		}
-		$bexError = errorObject $log
-		$errors.Add($bexError) | Out-Null
-		return
+		
+		$formattedError | Add-Member -MemberType NoteProperty -Name LogFileName -Value $log.joblog.header.log_name.Split(":")[1].Trim()
+		$formattedError | Add-Member -MemberType NoteProperty -Name ResourceType -Value "Backup"
+		$formattedError | Add-Member -MemberType NoteProperty -Name ResSubType -Value "Veritas"
+		$formattedError | Add-Member -MemberType NoteProperty -Name MndTime -Value $dateNow
+		$formattedError | Add-Member -MemberType NoteProperty -Name JobType -Value $log.joblog.header.type.Split(":")[1].Trim()
+		$formattedError | Add-Member -MemberType NoteProperty -Name EngineCompletionStatus -Value $log.joblog.footer.engine_completion_status.Split(":")[1].Trim()
 	}
 	
 	# check for generated event logs
@@ -84,19 +93,24 @@ function getHistoryJobStatus($job){
 	$e = getEventLogError $job.Name $job.ActualStartTime
 	
 	if ($e){
-		$formattedError = New-Object -TypeName PSObject
-		$formattedError | Add-Member -MemberType NoteProperty -Name ResourceType -Value "Backup"
-		$formattedError | Add-Member -MemberType NoteProperty -Name ResSubType -Value "Veritas"
-		$formattedError | Add-Member -MemberType NoteProperty -Name MndTime -Value $dateNow
-		$formattedError | Add-Member -MemberType NoteProperty -Name "JobName" -Value $job.Name
-		$formattedError | Add-Member -MemberType NoteProperty -Name "StartTime" -Value $e.TimeGenerated
-		$formattedError | Add-Member -MemberType NoteProperty -Name "ServerName" -Value $e.MachineName
-		$formattedError | Add-Member -MemberType NoteProperty -Name "ErrorCode" -Value $e.EventID
-		$formattedError | Add-Member -MemberType NoteProperty -Name "ErrorDescription" -Value $e.Message
-
+	
+		$took = ($e.TimeGenerated - $(Get-Date -Date $job.ActualStartTime))
+		
+		$formattedError | Add-Member -MemberType NoteProperty -Name JobName -Value $job.Name
+		$formattedError | Add-Member -MemberType NoteProperty -Name JobStartTime -Value $(Get-Date -Date $job.ActualStartTime)
+		$formattedError | Add-Member -MemberType NoteProperty -Name JobEndTime -Value $e.TimeGenerated
+		$formattedError | Add-Member -MemberType NoteProperty -Name ServerName -Value $e.MachineName
+		$formattedError | Add-Member -MemberType NoteProperty -Name ErrorCode -Value $e.EventID
+		$formattedError | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value $e.Message
+		$formattedError | Add-Member -MemberType NoteProperty -Name ErrorCategory -Value $e.CategoryNumber
+		$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenSec -Value $took.TotalSeconds
+		$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenHMS -Value ("{0:hh:mm:ss}" -f $took.toString())
+		
 		$errors.Add($formattedError) | Out-Null
 		return
 	}
+	
+	return
 }
 
 # used for validating history jobs by start time
@@ -200,44 +214,21 @@ function errorObject($obj) {
 	$object | Add-Member -MemberType NoteProperty -Name ResSubType -Value "Veritas"
 	$object | Add-Member -MemberType NoteProperty -Name MndTime -Value $dateNow
 
-	if ($obj.gettype() -eq [System.Xml.XmlDocument]){
-		$startDate = (parseJobTime($obj.joblog.header.start_time))
-		$endDate = (parseJobTime($obj.joblog.footer.end_time))
+	$object | Add-Member -MemberType NoteProperty -Name ServerName -Value $obj.BackupExecServerName
+	$object | Add-Member -MemberType NoteProperty -Name JobName -Value $obj.Name
+	$object | Add-Member -MemberType NoteProperty -Name JobType -Value $obj.JobType
+	$object | Add-Member -MemberType NoteProperty -Name StartTime -Value $obj.StartTime
+	$object | Add-Member -MemberType NoteProperty -Name LogFileName -Value $obj.JobLogFilePath
 
-		$object | Add-Member -MemberType NoteProperty -Name ServerName -Value $obj.joblog.header.server.Split(":")[1].Trim()
-		$object | Add-Member -MemberType NoteProperty -Name JobName -Value $obj.joblog.header.name.Split(":")[1].Trim()
-		$object | Add-Member -MemberType NoteProperty -Name JobType -Value $obj.joblog.header.type.Split(":")[1].Trim()
-		$object | Add-Member -MemberType NoteProperty -Name StartTime -Value $startDate
-		$object | Add-Member -MemberType NoteProperty -Name LogName -Value $obj.joblog.header.log_name.Split(":")[1].Trim()
+	$object | Add-Member -MemberType NoteProperty -Name EndTime -Value $obj.EndTime
+	$object | Add-Member -MemberType NoteProperty -Name EngineCompletionStatus -Value $obj.JobStatus
 
-		$object | Add-Member -MemberType NoteProperty -Name EndTime -Value $endDate
-		$object | Add-Member -MemberType NoteProperty -Name EngineCompletionStatus -Value $obj.joblog.footer.engine_completion_status.Split(":")[1].Trim()
+	$object | Add-Member -MemberType NoteProperty -Name ErrorCode -Value $obj.ErrorCode
+	$object | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value $obj.ErrorMessage
+	$object | Add-Member -MemberType NoteProperty -Name ErrorCategory -Value $obj.ErrorCategory
 
-		$object | Add-Member -MemberType NoteProperty -Name ErrorCode -Value $obj.joblog.footer.CompleteStatus
-		$object | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value $obj.joblog.footer.AbortUserName
-		$object | Add-Member -MemberType NoteProperty -Name ErrorCategory -Value $obj.joblog.footer.ErrorCategory
-
-		$took = ($endDate - $startDate)
-
-		$object | Add-Member -MemberType NoteProperty -Name TimeTaken_sec -Value $took.Seconds
-		$object | Add-Member -MemberType NoteProperty -Name TimeTaken_HMS -Value ("{0:hh:mm:ss}" -f $took.toString())
-	} else {
-		$object | Add-Member -MemberType NoteProperty -Name ServerName -Value $obj.BackupExecServerName
-		$object | Add-Member -MemberType NoteProperty -Name JobName -Value $obj.Name
-		$object | Add-Member -MemberType NoteProperty -Name JobType -Value $obj.JobType
-		$object | Add-Member -MemberType NoteProperty -Name StartTime -Value $obj.StartTime
-		$object | Add-Member -MemberType NoteProperty -Name LogName -Value $obj.JobLogFilePath
-
-		$object | Add-Member -MemberType NoteProperty -Name EndTime -Value $obj.EndTime
-		$object | Add-Member -MemberType NoteProperty -Name EngineCompletionStatus -Value $obj.JobStatus
-
-		$object | Add-Member -MemberType NoteProperty -Name ErrorCode -Value $obj.ErrorCode
-		$object | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value $obj.ErrorMessage
-		$object | Add-Member -MemberType NoteProperty -Name ErrorCategory -Value $obj.ErrorCategory
-
-		$object | Add-Member -MemberType NoteProperty -Name TimeTaken_sec -Value $obj.ElapsedTime.Seconds
-		$object | Add-Member -MemberType NoteProperty -Name TimeTaken_HMS -Value $obj.ElapsedTime
-	}
+	$object | Add-Member -MemberType NoteProperty -Name TimeTakenSec -Value $obj.ElapsedTime.Seconds
+	$object | Add-Member -MemberType NoteProperty -Name TimeTakenHMS -Value $obj.ElapsedTime
 	return $object
 }
 
@@ -278,6 +269,8 @@ $lastRunDate = getLastRunDate
 if ($args[0]){
 	$lastRunDate = $args[0]
 }
+
+date > $lastRunFile
 
 # this is a 14+ version block
 if(Get-Module -List BEMCLI) {
