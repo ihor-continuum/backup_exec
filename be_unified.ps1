@@ -18,10 +18,7 @@ function getBexLogStatus($jobName, $logFilePath){
 	} Catch {
 		return
 	}
-	$logJobName = $log.joblog.header.name.Trim()
-	if (!($log -and $log.joblog.footer.engine_completion_status.Trim() -eq "Job completion status: Successful")) {
-		return $log
-	}
+	return $log
 }
 
 # converts plaintext BEX log format like "Job ended: Sunday, June 24, 2018 at 8:00:14 AM\n" into DateTime object
@@ -43,17 +40,26 @@ function parseJobTime($jobTime) {
 # search through Event Log to find an error
 # since expected run time
 function getEventLogError($jobName, $jobStartTime){
+
 	$jobStartTime = Get-Date -Date $jobStartTime
-	$after = $jobStartTime - (New-TimeSpan -Minutes 1)
+	$jobStartTime = $jobStartTime - (New-Timespan -Seconds 20)
 	Try {
-		$eventLogErrors = Get-EventLog -LogName Application -Source "Backup Exec" -EntryType Error,Warning -After $($after) -Before $($dateNow)
+		$eventLogErrors = Get-EventLog -LogName Application -Source "Backup Exec" -EntryType Error,Warning -After $($jobStartTime)
 	} Catch {
 		return
 	}
+
+	if (($jobName.Split([Environment]::NewLine)[0]) -match '\(' -or ($jobName.Split([Environment]::NewLine)[0]) -match '\)'){	
+		$jobName = $jobName.Split([Environment]::NewLine)[0].Replace("(", "\(")
+		$jobName = $jobName.Split([Environment]::NewLine)[0].Replace(")", "\)")
+	}
 	
-	foreach ($e in $eventLogErrors) {
-		if ($e.Message | Select-String -Pattern $jobName.Split([Environment]::NewLine)[0]){
-			return $e
+
+	$eventLogErrors = $eventLogErrors | Sort-Object -Property @{Expression = "TimeGenerated"; Descending = $False}
+
+	for ($i=0; $i -lt $eventLogErrors.Length; $i++){
+		if ($eventLogErrors[$i].Message -Match $jobName.Split([Environment]::NewLine)[0]){
+			return $eventLogErrors[$i]
 		}
 	}
 }
@@ -69,46 +75,51 @@ function getHistoryJobStatus($job){
 	# if it is not successes - add to error
 	$logFilePath = ""
 	$jobInfo | Out-String | Select-String -Pattern "LOGFILE:\s+(.+.xml)" | forEach {$_.matches | forEach { $logFilePath = $_.Groups[1].Value}}
+	
 	$log = getBexLogStatus $job.Name $logFilePath
 	
 	$formattedError = New-Object -TypeName PSObject
+	$formattedError | Add-Member -MemberType NoteProperty -Name ResourceType -Value "Backup"
+	$formattedError | Add-Member -MemberType NoteProperty -Name ResSubType -Value "Veritas"
+	$formattedError | Add-Member -MemberType NoteProperty -Name MndTime -Value $dateNow
+	$formattedError | Add-Member -MemberType NoteProperty -Name JobName -Value $job.Name
+	$formattedError | Add-Member -MemberType NoteProperty -Name JobStartTime -Value $(Get-Date -Date $job.ActualStartTime)
 	
 	if ($log){
-		$jobName = $($job.Name.Split([Environment]::NewLine)[0])
-		if (($log.joblog.header.name.Trim() -eq "Job name: $($jobName)") -and ($log.joblog.footer.engine_completion_status.Trim() -eq "Job completion status: Successful")) {
+		if ($log.joblog.footer.engine_completion_status.Trim() -eq "Job completion status: Successful") {
 			return
 		}
 		
+		$startDate = (parseJobTime($log.joblog.header.start_time))
+		$endDate = (parseJobTime($log.joblog.footer.end_time))
+
 		$formattedError | Add-Member -MemberType NoteProperty -Name LogFileName -Value $log.joblog.header.log_name.Split(":")[1].Trim()
-		$formattedError | Add-Member -MemberType NoteProperty -Name ResourceType -Value "Backup"
-		$formattedError | Add-Member -MemberType NoteProperty -Name ResSubType -Value "Veritas"
-		$formattedError | Add-Member -MemberType NoteProperty -Name MndTime -Value $dateNow
 		$formattedError | Add-Member -MemberType NoteProperty -Name JobType -Value $log.joblog.header.type.Split(":")[1].Trim()
 		$formattedError | Add-Member -MemberType NoteProperty -Name EngineCompletionStatus -Value $log.joblog.footer.engine_completion_status.Split(":")[1].Trim()
+		$formattedError | Add-Member -MemberType NoteProperty -Name ServerName -Value $log.joblog.header.server.Split(":")[1].Trim()
+		$formattedError | Add-Member -MemberType NoteProperty -Name JobEndTime -Value $endDate
+		
+		$took = ($endDate - $startDate)
+		
+		$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenSec -Value $took.TotalSeconds
+		$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenHMS -Value ("{0:hh:mm:ss}" -f $took.toString())
+		
 	}
-	
-	# check for generated event logs
-	# if presents add to errors
-	$e = getEventLogError $job.Name $(Get-Date -Date $job.ActualStartTime)
-	
+	if ($endDate){
+		$e = getEventLogError $job.Name $($endDate)
+	} else {
+		$e = getEventLogError $job.Name $(Get-Date -Date $job.ActualStartTime)
+		$formattedError | Add-Member -MemberType NoteProperty -Name JobEndTime -Value $e.TimeGenerated
+	}
 	if ($e){
 	
-		$took = ($e.TimeGenerated - $(Get-Date -Date $job.ActualStartTime))
-		
-		$formattedError | Add-Member -MemberType NoteProperty -Name JobName -Value $job.Name
-		$formattedError | Add-Member -MemberType NoteProperty -Name JobStartTime -Value $(Get-Date -Date $job.ActualStartTime)
-		$formattedError | Add-Member -MemberType NoteProperty -Name JobEndTime -Value $e.TimeGenerated
-		$formattedError | Add-Member -MemberType NoteProperty -Name ServerName -Value $e.MachineName
 		$formattedError | Add-Member -MemberType NoteProperty -Name ErrorCode -Value $e.EventID
 		$formattedError | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value $e.Message
 		$formattedError | Add-Member -MemberType NoteProperty -Name ErrorCategory -Value $e.CategoryNumber
-		$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenSec -Value $took.TotalSeconds
-		$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenHMS -Value ("{0:hh:mm:ss}" -f $took.toString())
 		
 		$errors.Add($formattedError) | Out-Null
 		return
 	}
-	
 	return
 }
 
