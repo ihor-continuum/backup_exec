@@ -15,10 +15,10 @@ function errorForCode($code, $desc) {
 function getBexLogStatus($jobName, $logFilePath){
 	Try {
 		[xml]$log = Get-Content -Path $logFilePath
+		return $log
 	} Catch {
 		return
 	}
-	return $log
 }
 
 # converts plaintext BEX log format like "Job ended: Sunday, June 24, 2018 at 8:00:14 AM\n" into DateTime object
@@ -42,9 +42,8 @@ function parseJobTime($jobTime) {
 function getEventLogError($jobName, $jobStartTime){
 
 	$jobStartTime = Get-Date -Date $jobStartTime
-	$jobStartTime = $jobStartTime - (New-Timespan -Seconds 20)
 	Try {
-		$eventLogErrors = Get-EventLog -LogName Application -Source "Backup Exec" -EntryType Error,Warning -After $($jobStartTime)
+		$eventLogErrors = Get-EventLog -LogName Application -Source "Backup Exec" -EntryType Error,Warning -After $($jobStartTime - (New-Timespan -Seconds 1))
 	} Catch {
 		return
 	}
@@ -54,13 +53,25 @@ function getEventLogError($jobName, $jobStartTime){
 		$jobName = $jobName.Split([Environment]::NewLine)[0].Replace(")", "\)")
 	}
 	
-
 	$eventLogErrors = $eventLogErrors | Sort-Object -Property @{Expression = "TimeGenerated"; Descending = $False}
 
+	$jobName = $jobName.Split([Environment]::NewLine)[0]
+	$jobName = """$($jobName)"""
+
+	if ($eventLogErrors.Length -gt 0){
 	for ($i=0; $i -lt $eventLogErrors.Length; $i++){
-		if ($eventLogErrors[$i].Message -Match $jobName.Split([Environment]::NewLine)[0]){
+		#write-host $jobName
+		#write-host $jobStartTime
+		if ($eventLogErrors[$i].Message -Match $jobName){
 			return $eventLogErrors[$i]
 		}
+		continue
+	}
+	} else {
+	    if ($eventLogErrors.Message -Match $jobName){
+			return $eventLogErrors
+	    }
+	    return	
 	}
 }
 
@@ -85,6 +96,8 @@ function getHistoryJobStatus($job){
 	$formattedError | Add-Member -MemberType NoteProperty -Name JobName -Value $job.Name
 	$formattedError | Add-Member -MemberType NoteProperty -Name JobStartTime -Value $(Get-Date -Date $job.ActualStartTime)
 	
+	$endDate = ""
+
 	if ($log){
 		if ($log.joblog.footer.engine_completion_status.Trim() -eq "Job completion status: Successful") {
 			return
@@ -120,7 +133,7 @@ function getHistoryJobStatus($job){
 		$errors.Add($formattedError) | Out-Null
 		return
 	}
-	return
+	continue
 }
 
 # used for validating history jobs by start time
