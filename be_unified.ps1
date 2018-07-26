@@ -95,6 +95,16 @@ function getHistoryJobStatus($job){
 	$formattedError | Add-Member -MemberType NoteProperty -Name MndTime -Value $dateNow
 	$formattedError | Add-Member -MemberType NoteProperty -Name JobName -Value $job.Name
 	$formattedError | Add-Member -MemberType NoteProperty -Name JobStartTime -Value $(Get-Date -Date $job.ActualStartTime)
+	$formattedError | Add-Member -MemberType NoteProperty -Name LogFileName -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name JobType -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name EngineCompletionStatus -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name ServerName -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name JobEndTime -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenSec -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenHMS -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name ErrorCode -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name ErrorCategory -Value ""
 	
 	$endDate = ""
 
@@ -105,30 +115,33 @@ function getHistoryJobStatus($job){
 		
 		$startDate = (parseJobTime($log.joblog.header.start_time))
 		$endDate = (parseJobTime($log.joblog.footer.end_time))
-
-		$formattedError | Add-Member -MemberType NoteProperty -Name LogFileName -Value $log.joblog.header.log_name.Split(":")[1].Trim()
-		$formattedError | Add-Member -MemberType NoteProperty -Name JobType -Value $log.joblog.header.type.Split(":")[1].Trim()
-		$formattedError | Add-Member -MemberType NoteProperty -Name EngineCompletionStatus -Value $log.joblog.footer.engine_completion_status.Split(":")[1].Trim()
-		$formattedError | Add-Member -MemberType NoteProperty -Name ServerName -Value $log.joblog.header.server.Split(":")[1].Trim()
-		$formattedError | Add-Member -MemberType NoteProperty -Name JobEndTime -Value $endDate
-		
 		$took = ($endDate - $startDate)
-		
-		$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenSec -Value $took.TotalSeconds
-		$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenHMS -Value ("{0:hh:mm:ss}" -f $took.toString())
+
+		$formattedError.LogFileName = $log.joblog.header.log_name.Split(":")[1].Trim()
+		$formattedError.JobType = $log.joblog.header.type.Split(":")[1].Trim()
+		$formattedError.EngineCompletionStatus = $log.joblog.footer.engine_completion_status.Split(":")[1].Trim()
+		$formattedError.ServerName = $log.joblog.header.server.Split(":")[1].Trim()
+		$formattedError.JobEndTime = $endDate
+		$formattedError.TimeTakenSec = $took.TotalSeconds
+		$formattedError.TimeTakenHMS = ("{0:hh:mm:ss}" -f $took.toString())
 		
 	}
+
 	if ($endDate){
 		$e = getEventLogError $job.Name $($endDate)
 	} else {
 		$e = getEventLogError $job.Name $(Get-Date -Date $job.ActualStartTime)
-		$formattedError | Add-Member -MemberType NoteProperty -Name JobEndTime -Value $e.TimeGenerated
 	}
 	if ($e){
-	
-		$formattedError | Add-Member -MemberType NoteProperty -Name ErrorCode -Value $e.EventID
-		$formattedError | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value $e.Message
-		$formattedError | Add-Member -MemberType NoteProperty -Name ErrorCategory -Value $e.CategoryNumber
+		$took = $e.TimeGenerated - $(Get-Date $job.ActualStartTime)
+		
+		$formattedError.ServerName = $e.MachineName
+		$formattedError.JobEndTime = $e.TimeGenerated
+		$formattedError.ErrorCode = $e.EventID
+		$formattedError.ErrorDescription = $e.Message
+		$formattedError.ErrorCategory = $e.CategoryNumber
+		$formattedError.TimeTakenSec = $took.TotalSeconds
+		$formattedError.TimeTakenHMS = ("{0:hh:mm:ss}" -f $took.toString())
 		
 		$errors.Add($formattedError) | Out-Null
 		return
