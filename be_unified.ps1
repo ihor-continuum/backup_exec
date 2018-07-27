@@ -97,11 +97,12 @@ function getHistoryJobStatus($job){
 	$formattedError | Add-Member -MemberType NoteProperty -Name JobStartTime -Value $(Get-Date -Date $job.ActualStartTime)
 	$formattedError | Add-Member -MemberType NoteProperty -Name LogFileName -Value ""
 	$formattedError | Add-Member -MemberType NoteProperty -Name JobType -Value ""
-	$formattedError | Add-Member -MemberType NoteProperty -Name EngineCompletionStatus -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name CompleteStatusCode -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name JobStatus -Value ""
 	$formattedError | Add-Member -MemberType NoteProperty -Name ServerName -Value ""
 	$formattedError | Add-Member -MemberType NoteProperty -Name JobEndTime -Value ""
-	$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenSec -Value ""
-	$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenHMS -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenInSec -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenInHHMMSS -Value ""
 	$formattedError | Add-Member -MemberType NoteProperty -Name ErrorCode -Value ""
 	$formattedError | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value ""
 	$formattedError | Add-Member -MemberType NoteProperty -Name ErrorCategory -Value ""
@@ -112,6 +113,10 @@ function getHistoryJobStatus($job){
 		if ($log.joblog.footer.engine_completion_status.Trim() -eq "Job completion status: Successful") {
 			return
 		}
+
+		$jobStatusCode = ""
+		$jobStatus = ""
+		$jobInfo | Out-String | Select-String -Pattern "JOB STATUS:+\s+([0-9])\s[(](.+)[)]" -AllMatches | forEach {$_.matches | forEach { $jobStatusCode = $_.Groups[1].Value; $jobStatus = $_.Groups[2].Value}}
 		
 		$startDate = (parseJobTime($log.joblog.header.start_time))
 		$endDate = (parseJobTime($log.joblog.footer.end_time))
@@ -119,11 +124,12 @@ function getHistoryJobStatus($job){
 
 		$formattedError.LogFileName = $log.joblog.header.log_name.Split(":")[1].Trim()
 		$formattedError.JobType = $log.joblog.header.type.Split(":")[1].Trim()
-		$formattedError.EngineCompletionStatus = $log.joblog.footer.engine_completion_status.Split(":")[1].Trim()
 		$formattedError.ServerName = $log.joblog.header.server.Split(":")[1].Trim()
 		$formattedError.JobEndTime = $endDate
-		$formattedError.TimeTakenSec = $took.TotalSeconds
-		$formattedError.TimeTakenHMS = ("{0:hh:mm:ss}" -f $took.toString())
+		$formattedError.CompleteStatusCode = $jobStatusCode
+		$formattedError.JobStatus = $jobStatus
+		$formattedError.TimeTakenInSec = $took.TotalSeconds
+		$formattedError.TimeTakenInHHMMSS = ("{0:hh:mm:ss}" -f $took.toString())
 		
 	}
 
@@ -140,8 +146,8 @@ function getHistoryJobStatus($job){
 		$formattedError.ErrorCode = $e.EventID
 		$formattedError.ErrorDescription = $e.Message
 		$formattedError.ErrorCategory = $e.CategoryNumber
-		$formattedError.TimeTakenSec = $took.TotalSeconds
-		$formattedError.TimeTakenHMS = ("{0:hh:mm:ss}" -f $took.toString())
+		$formattedError.TimeTakenInSec = $took.TotalSeconds
+		$formattedError.TimeTakenInHHMMSS = ("{0:hh:mm:ss}" -f $took.toString())
 		
 		$errors.Add($formattedError) | Out-Null
 		return
@@ -257,14 +263,14 @@ function errorObject($obj) {
 	$object | Add-Member -MemberType NoteProperty -Name LogFileName -Value $obj.JobLogFilePath
 
 	$object | Add-Member -MemberType NoteProperty -Name EndTime -Value $obj.EndTime
-	$object | Add-Member -MemberType NoteProperty -Name EngineCompletionStatus -Value $obj.JobStatus
+	$object | Add-Member -MemberType NoteProperty -Name CompleteStatusCode -Value $obj.JobStatus
 
 	$object | Add-Member -MemberType NoteProperty -Name ErrorCode -Value $obj.ErrorCode
 	$object | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value $obj.ErrorMessage
 	$object | Add-Member -MemberType NoteProperty -Name ErrorCategory -Value $obj.ErrorCategory
 
-	$object | Add-Member -MemberType NoteProperty -Name TimeTakenSec -Value $obj.ElapsedTime.Seconds
-	$object | Add-Member -MemberType NoteProperty -Name TimeTakenHMS -Value $obj.ElapsedTime
+	$object | Add-Member -MemberType NoteProperty -Name TimeTakenInSec -Value $obj.ElapsedTime.Seconds
+	$object | Add-Member -MemberType NoteProperty -Name TimeTakenInHHMMSS -Value $obj.ElapsedTime
 	return $object
 }
 
