@@ -75,6 +75,27 @@ function getEventLogError($jobName, $jobStartTime){
 	}
 }
 
+function defaultFormattedError(){
+	$formattedError = New-Object -TypeName PSObject
+	$formattedError | Add-Member -MemberType NoteProperty -Name ResourceType -Value "Backup"
+	$formattedError | Add-Member -MemberType NoteProperty -Name ResSubType -Value "Veritas"
+	$formattedError | Add-Member -MemberType NoteProperty -Name MndTime -Value $dateNow
+	$formattedError | Add-Member -MemberType NoteProperty -Name JobName -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name JobStartTime -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name LogFileName -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name JobType -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name CompleteStatusCode -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name JobStatus -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name ServerName -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name JobEndTime -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenInSec -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenInHHMMSS -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name ErrorCode -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name ErrorCategory -Value ""
+	return $formattedError
+}
+
 # used for retrieving all information by specific
 # history job ID and collecting information about
 # failed jobs
@@ -89,24 +110,9 @@ function getHistoryJobStatus($job){
 	
 	$log = getBexLogStatus $job.Name $logFilePath
 	
-	$formattedError = New-Object -TypeName PSObject
-	$formattedError | Add-Member -MemberType NoteProperty -Name ResourceType -Value "Backup"
-	$formattedError | Add-Member -MemberType NoteProperty -Name ResSubType -Value "Veritas"
-	$formattedError | Add-Member -MemberType NoteProperty -Name MndTime -Value $dateNow
-	$formattedError | Add-Member -MemberType NoteProperty -Name JobName -Value $job.Name
-	$formattedError | Add-Member -MemberType NoteProperty -Name JobStartTime -Value $(Get-Date -Date $job.ActualStartTime)
-	$formattedError | Add-Member -MemberType NoteProperty -Name LogFileName -Value ""
-	$formattedError | Add-Member -MemberType NoteProperty -Name JobType -Value ""
-	$formattedError | Add-Member -MemberType NoteProperty -Name CompleteStatusCode -Value ""
-	$formattedError | Add-Member -MemberType NoteProperty -Name JobStatus -Value ""
-	$formattedError | Add-Member -MemberType NoteProperty -Name ServerName -Value ""
-	$formattedError | Add-Member -MemberType NoteProperty -Name JobEndTime -Value ""
-	$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenInSec -Value ""
-	$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenInHHMMSS -Value ""
-	$formattedError | Add-Member -MemberType NoteProperty -Name ErrorCode -Value ""
-	$formattedError | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value ""
-	$formattedError | Add-Member -MemberType NoteProperty -Name ErrorCategory -Value ""
-	
+	$formattedError = defaultFormattedError
+	$formattedError.JobStartTime = $(Get-Date ($job.ActualStartTime))
+
 	$endDate = ""
 
 	if ($log){
@@ -328,20 +334,16 @@ if(Get-Module -List BEMCLI) {
 		exit -6
 	}
 
+	$fe = defaultFormattedError
+
 	$warnings = Get-EventLog -LogName Application -Source 'Backup Exec' -EntryType Error,Warning -After $lastRunDate -ErrorAction SilentlyContinue
 	
 	if ($warnings) {
         foreach ($w in $warnings) {
-			$fe = New-Object -TypeName PSObject
-
-			$fe | Add-Member -MemberType NoteProperty -Name ResourceType -Value "Backup"
-			$fe | Add-Member -MemberType NoteProperty -Name ResSubType -Value "Veritas"
-			$fe | Add-Member -MemberType NoteProperty -Name MndTime -Value $dateNow
-
-			$fe | Add-Member -MemberType NoteProperty -Name StartTime -Value $w.TimeGenerated
-			$fe | Add-Member -MemberType NoteProperty -Name ServerName -Value $w.MachineName
-			$fe | Add-Member -MemberType NoteProperty -Name ErrorCode -Value $w.EventID
-			$fe | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value $w.Message
+			$fe.JobStartTime = $w.TimeGenerated
+			$fe.ServerName = $w.MachineName
+			$fe.ErrorCode = $w.EventID
+			$fe.ErrorDescription = $w.Message
 
 			$errors += $fe
 	   }
