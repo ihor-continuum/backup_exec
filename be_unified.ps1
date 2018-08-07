@@ -1,3 +1,12 @@
+if ($env:PROCESSOR_ARCHITEW6432 -eq "AMD64") {
+	if ($myInvocation.Line) {
+        	&"$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile $myInvocation.Line
+    	}else{
+        	&"$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile -file "$($myInvocation.InvocationName)" $args
+  	}
+	exit $lastexitcode
+}
+
 # used for formatting errors to xml
 function formatErrorsAsXml($errors) {
 	return ($errors | ConvertTo-Xml -NoTypeInformation -As Stream)
