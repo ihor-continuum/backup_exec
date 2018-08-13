@@ -97,7 +97,7 @@ function defaultFormattedError(){
 	$formattedError | Add-Member -MemberType NoteProperty -Name JobStatus -Value ""
 	$formattedError | Add-Member -MemberType NoteProperty -Name ServerName -Value ""
 	$formattedError | Add-Member -MemberType NoteProperty -Name JobEndTime -Value ""
-	$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenInSec -Value ""
+	$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenInSec -Value "0"
 	$formattedError | Add-Member -MemberType NoteProperty -Name TimeTakenInHHMMSS -Value ""
 	$formattedError | Add-Member -MemberType NoteProperty -Name ErrorCode -Value ""
 	$formattedError | Add-Member -MemberType NoteProperty -Name ErrorDescription -Value ""
