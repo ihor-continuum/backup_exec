@@ -358,15 +358,15 @@ if(Get-Module -List BEMCLI) {
 	   }
     }
 
-    if ($job_history) {
-		foreach ($j in $job_history) {
-			$OkStatus =  @('Succeeded', 'Completed', 'Active', 'Ready', 'Scheduled', 'SucceededWithExceptions')
-
-			if ($OkStatus -contains $j.JobStatus) { continue }
-
-			$errors += errorObject $j
-		}
-    }
+    #if ($job_history) {
+	#	foreach ($j in $job_history) {
+	#		$OkStatus =  @('Succeeded', 'Completed', 'Active', 'Ready', 'Scheduled', 'SucceededWithExceptions')
+	#
+	#		if ($OkStatus -contains $j.JobStatus) { continue }
+	#
+	#		$errors += errorObject $j
+	#	}
+    #}
 	Write-Output (formatErrorsAsXml $errors)
 
 	exit 0
